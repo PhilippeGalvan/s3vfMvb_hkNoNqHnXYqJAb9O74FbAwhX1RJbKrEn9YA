@@ -1,0 +1,10 @@
+<ul>
+{% for movie, people in movie_list.items %}
+    <li>{{movie}}</li>
+    <ul>
+    {% for person in people %}
+        <li>{{person}}</li>
+    {% endfor %}
+    </ul>
+{% endfor %}
+</ul>
