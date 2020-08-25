@@ -5,3 +5,4 @@ venv
 *.sqlite3
 .coverage
 htmlcov
+.DS_store
