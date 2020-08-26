@@ -1,10 +1,18 @@
-from django.test import TestCase, Client
-from .processing import get_movies_with_id, get_movies_with_people
-from copy import deepcopy
-import httpretty
 import json
+import httpretty
+from redis import StrictRedis
+from copy import deepcopy
+from datetime import datetime
+
+from django.test import TestCase, Client
 from django.urls import reverse
 
+from .processing import get_movies_with_id, get_movies_with_people
+from senndertest.settings import (
+    REDIS_HOST,
+    REDIS_HASH_CACHE,
+    REDIS_HASH_CACHE_KEY,
+)
 
 films_uri = 'https://ghibliapi.herokuapp.com/films'
 people_uri = 'https://ghibliapi.herokuapp.com/people'
@@ -80,8 +88,13 @@ people_body = json.dumps([
 ])
 
 
-def reset_cache():
-    
+conn = StrictRedis(REDIS_HOST)
+
+
+def reset_cache(redis_conn: StrictRedis = conn):
+    if redis_conn.exists(REDIS_HASH_CACHE):
+        redis_conn.hdel(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY)
+
 
 def mock_people_api(status=200, body=None, method=httpretty.GET):
 
@@ -111,14 +124,8 @@ def mock_movies_api(status=200, body=None, method=httpretty.GET):
 
 class TestFilmsById(TestCase):
 
-    def test_returns_good_format_using_live_api(self):
-        movies_with_id = get_movies_with_id()
-        self.assertNotEqual(movies_with_id, {})
-        self.assertIsInstance(movies_with_id, dict)
-        for id, title in movies_with_id.items():
-            # It should be valid Bearer token id
-            self.assertRegex(id, r'[\d|a-f]{8}-([\d|a-f]{4}-){3}[\d|a-f]{12}')
-            self.assertIsInstance(title, str)
+    def tearDown(self):
+        reset_cache()
 
     @httpretty.activate
     def test_returns_empty_dict_if_not_200(self):
@@ -155,17 +162,8 @@ class TestFilmsWithPeople(TestCase):
             "Film without people": [],
         }
 
-    def test_returns_good_format_using_live_api(self):
-        mock_movies_api()
-
-        movies_with_people = get_movies_with_people()
-        self.assertNotEqual(movies_with_people, {})
-        self.assertIsInstance(movies_with_people, dict)
-        for title, people in movies_with_people.items():
-            self.assertIsInstance(title, str)
-            self.assertIsInstance(people, list)
-            for person in people:
-                self.assertIsInstance(person, str)
+    def tearDown(self):
+        reset_cache()
 
     @httpretty.activate
     def test_returns_empty_dict_if_people_api_not_200(self):
@@ -200,7 +198,8 @@ class TestFilmsWithPeople(TestCase):
             {
                 "id": "f6ddf408-07fd-469b-8949-e09eac430a71",
                 "name": 'test_name'
-            },            {
+            },
+            {
                 "id": "f6ddf408-07fd-469b-8949-e09eac430a72",
                 "films": [
                     "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
@@ -213,11 +212,44 @@ class TestFilmsWithPeople(TestCase):
         movies_with_people = get_movies_with_people()
         self.assertEqual(movies_with_people, self.default_expected_output)
 
+    @httpretty.activate
+    def test_cache_filled(self):
+        mock_movies_api()
+        mock_people_api()
+
+        self.assertEqual(conn.exists(REDIS_HASH_CACHE), 0)
+        movies_with_people = get_movies_with_people()
+        self.assertEqual(conn.exists(REDIS_HASH_CACHE), 1)
+        self.assertEqual(
+            movies_with_people,
+            json.loads(conn.hget(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY).decode('utf-8'))  # noqa
+        )
+
+    @httpretty.activate
+    def test_cache_read(self):
+        # I don't see how to check that I'm returning a cached version except
+        # with logging or timing (which is more an hint than a proof)
+        mock_movies_api()
+        mock_people_api()
+
+        start_time = datetime.now()
+        get_movies_with_people()
+        first_call = datetime.now()
+        get_movies_with_people()
+        second_call = datetime.now()
+        self.assertGreater(
+            first_call - start_time,
+            5*(second_call - first_call)
+        )
+
 
 class TestFilmListView(TestCase):
 
     def setUp(self):
         self.client = Client()
+
+    def tearDown(self):
+        reset_cache()
 
     @httpretty.activate
     def test_response_ok(self):

@@ -30,9 +30,12 @@ if os.environ['DEBUG'] == 'True':
 else:
     DEBUG = False
 
+# Custom Global Constants
+REDIS_HOST = os.environ['REDIS_HOST']
+REDIS_HASH_CACHE = os.environ['REDIS_HASH_CACHE']
+REDIS_HASH_CACHE_KEY = os.environ['REDIS_HASH_CACHE_KEY']
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-
 
 # Application definition
 

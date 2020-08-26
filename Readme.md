@@ -9,6 +9,8 @@ source ./venv/bin/activate
 pip install .
 ```
 
+Setup a redis test server for example with a docker image (caching)
+
 Set the values inside `.env`
 
 Load environment variables (or add these commands to `.venv/bin/activate`):  
@@ -20,6 +22,7 @@ export $(cut -d = -f 1 .env)
 ### Usage
 
 Launch the app locally with:  
-```python
+```bash
+cd senndertest
 python manage.py runserver
 ```

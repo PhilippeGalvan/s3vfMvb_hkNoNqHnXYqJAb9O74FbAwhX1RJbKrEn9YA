@@ -1,11 +1,14 @@
-import requests
 import redis
+import requests
 import json
-from typing import List
+from senndertest.settings import (
+    REDIS_HOST,
+    REDIS_HASH_CACHE,
+    REDIS_HASH_CACHE_KEY,
+)
 
-conn = redis.Redis('localhost')
-redis_hash = "ghibli_movies_cache"
-redis_hash_key = "result"
+
+conn = redis.StrictRedis(REDIS_HOST)
 
 
 def get_movies_with_id() -> dict:
@@ -22,27 +25,34 @@ def get_movies_with_id() -> dict:
 
 
 def get_cached_movies_with_people(
-    redis_conn: redis.Redis = conn,
+    redis_conn: redis.StrictRedis = conn,
 ) -> dict:
-    if redis_conn.exists(redis_hash):
+    if redis_conn.exists(REDIS_HASH_CACHE):
         return json.loads(
-            conn.hget(redis_hash, redis_hash_key).decode('utf-8')
+            conn.hget(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY).decode('utf-8')
         )
     else:
         return {}
 
 
 def set_cache_movies_with_people(
-    redis_conn: redis.Redis = conn,
+    redis_conn: redis.StrictRedis = conn,
     cache_life_seconds: int = 60,
     payload: dict = {},
-):
-    redis_conn.hset(redis_hash, redis_hash_key, json.dumps(payload))
-    redis_conn.expire(redis_hash, cache_life_seconds)
-    return redis_conn.exists(redis_hash)
+) -> bool:
+    redis_conn.hset(
+        REDIS_HASH_CACHE,
+        REDIS_HASH_CACHE_KEY,
+        json.dumps(payload)
+    )
+    redis_conn.expire(
+        REDIS_HASH_CACHE,
+        cache_life_seconds
+    )
+    return True if redis_conn.exists(REDIS_HASH_CACHE) else False
 
 
-def get_movies_with_people(redis_conn=conn) -> dict:
+def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> dict:
     """
     Get all the movies with the characters associated with it.
     It returns the result as a dictionnary of characters indexed by film name
