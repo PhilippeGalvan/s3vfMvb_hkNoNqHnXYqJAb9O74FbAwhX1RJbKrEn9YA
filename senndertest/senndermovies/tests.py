@@ -1,7 +1,9 @@
-from django.test import TestCase
+from django.test import TestCase, Client
 from .processing import get_movies_with_id, get_movies_with_people
+from copy import deepcopy
 import httpretty
 import json
+from django.urls import reverse
 
 
 films_uri = 'https://ghibliapi.herokuapp.com/films'
@@ -78,6 +80,32 @@ people_body = json.dumps([
 ])
 
 
+def mock_people_api(status=200, body=None, method=httpretty.GET):
+
+    if not body:
+        body = people_body if status == 200 else '{"message": "HTTPretty :)"}'
+
+    httpretty.register_uri(
+        method,
+        people_uri,
+        body=people_body,
+        status=status,
+    )
+
+
+def mock_movies_api(status=200, body=None, method=httpretty.GET):
+
+    if not body:
+        body = film_body if status == 200 else '{"message": "HTTPretty :)"}'
+
+    httpretty.register_uri(
+        method,
+        films_uri,
+        body=film_body,
+        status=status,
+    )
+
+
 class TestFilmsById(TestCase):
 
     def test_returns_good_format_using_live_api(self):
@@ -91,11 +119,7 @@ class TestFilmsById(TestCase):
 
     @httpretty.activate
     def test_returns_empty_dict_if_not_200(self):
-        httpretty.register_uri(
-            httpretty.GET,
-            films_uri,
-            status=400,
-        )
+        mock_movies_api(status=400)
 
         movies_with_id = get_movies_with_id()
         self.assertEqual(movies_with_id, {})
@@ -107,11 +131,7 @@ class TestFilmsById(TestCase):
             "12cfb892-aac0-4c5b-94af-521852e46d6a": "Grave of the Fireflies",
             "12cfb892-aac0-4c5b-94af-521432e45c6b": "Film without people",
         }
-        httpretty.register_uri(
-            httpretty.GET,
-            films_uri,
-            body=film_body,
-        )
+        mock_movies_api()
 
         movies_with_id = get_movies_with_id()
         self.assertEqual(movies_with_id, expected_output)
@@ -119,13 +139,22 @@ class TestFilmsById(TestCase):
 
 class TestFilmsWithPeople(TestCase):
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.default_expected_output = {
+            "Castle in the Sky": [
+                "Ashitaka",
+                "Lusheeta Toel Ul Laputa",
+            ],
+            "Grave of the Fireflies": [
+                "Ashitaka",
+            ],
+            "Film without people": [],
+        }
+
     def test_returns_good_format_using_live_api(self):
-        httpretty.register_uri(
-            httpretty.GET,
-            films_uri,
-            body=film_body,
-            status=200,
-        )
+        mock_movies_api()
+
         movies_with_people = get_movies_with_people()
         self.assertNotEqual(movies_with_people, {})
         self.assertIsInstance(movies_with_people, dict)
@@ -137,49 +166,71 @@ class TestFilmsWithPeople(TestCase):
 
     @httpretty.activate
     def test_returns_empty_dict_if_people_api_not_200(self):
-        httpretty.register_uri(
-            httpretty.GET,
-            films_uri,
-            body=film_body,
-            status=200,
-        )
-        httpretty.register_uri(
-            httpretty.GET,
-            people_uri,
-            status=400,
-        )
+        mock_movies_api()
+        mock_people_api(status=400)
 
         movies_with_people = get_movies_with_people()
         self.assertEqual(movies_with_people, {})
 
     @httpretty.activate
     def test_accurately_converts_source_api(self):
-        expected_output = {
-            "Castle in the Sky": [
-                "Ashitaka",
-                "Lusheeta Toel Ul Laputa",
-            ],
-            "Grave of the Fireflies": [
-                "Ashitaka",
-            ],
-            "Film without people": [],
-        }
-        httpretty.register_uri(
-            httpretty.GET,
-            films_uri,
-            body=film_body,
-            status=200,
-        )
-        httpretty.register_uri(
-            httpretty.GET,
-            people_uri,
-            body=people_body,
-        )
+        mock_movies_api()
+        mock_people_api()
 
         movies_with_people = get_movies_with_people()
-        self.assertIn("Film without people", expected_output)
-        self.assertEqual(movies_with_people, expected_output)
+        self.assertIn("Film without people", self.default_expected_output)
+        self.assertEqual(movies_with_people, self.default_expected_output)
+
+    @httpretty.activate
+    def test_wrong_id_in_api_response(self):
+        """
+            This test is for an edge case where the API returns
+            a person without necessary infos (`name` and `films`)
+        """
+        mock_movies_api()
+        wrong_people_body = deepcopy(json.loads(people_body))
+        wrong_people_body += [
+            {
+                "id": "f6ddf408-07fd-469b-8949-e09eac430a70",
+                "length": 0
+            },
+            {
+                "id": "f6ddf408-07fd-469b-8949-e09eac430a71",
+                "name": 'test_name'
+            },            {
+                "id": "f6ddf408-07fd-469b-8949-e09eac430a72",
+                "films": [
+                    "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
+                ]
+            },
+        ]
+
+        mock_people_api(body=json.dumps(wrong_people_body))
+
+        movies_with_people = get_movies_with_people()
+        self.assertEqual(movies_with_people, self.default_expected_output)
 
 
 class TestFilmListView(TestCase):
-    pass
+
+    def setUp(self):
+        self.client = Client()
+
+    @httpretty.activate
+    def test_response_ok(self):
+        mock_movies_api()
+        mock_people_api()
+
+        response = self.client.get(reverse('movie_list'))
+        movies_with_people = get_movies_with_people()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(movies_with_people, response.context['movie_list'])
+        self.assertTemplateUsed(
+            response,
+            'senndermovies/movies_nested_list.html'
+        )
+        # All elements to be displayed are in the response !
+        for movie, people_list in movies_with_people.items():
+            self.assertContains(response, movie)
+            for person in people_list:
+                self.assertContains(response, person)
