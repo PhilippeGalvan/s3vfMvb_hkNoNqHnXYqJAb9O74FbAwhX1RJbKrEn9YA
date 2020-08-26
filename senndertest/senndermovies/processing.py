@@ -1,4 +1,11 @@
 import requests
+import redis
+import json
+from typing import List
+
+conn = redis.Redis('localhost')
+redis_hash = "ghibli_movies_cache"
+redis_hash_key = "result"
 
 
 def get_movies_with_id() -> dict:
@@ -7,7 +14,6 @@ def get_movies_with_id() -> dict:
     It returns a dictionnary containing all films name indexed by id
     if the API returns a valid result. Otherwise it returns an empty dict.
     """
-
     response = requests.get(
         'https://ghibliapi.herokuapp.com/films'
     )
@@ -15,12 +21,38 @@ def get_movies_with_id() -> dict:
     return {movie['id']: movie['title'] for movie in raw_movies}
 
 
-def get_movies_with_people() -> dict:
+def get_cached_movies_with_people(
+    redis_conn: redis.Redis = conn,
+) -> dict:
+    if redis_conn.exists(redis_hash):
+        return json.loads(
+            conn.hget(redis_hash, redis_hash_key).decode('utf-8')
+        )
+    else:
+        return {}
+
+
+def set_cache_movies_with_people(
+    redis_conn: redis.Redis = conn,
+    cache_life_seconds: int = 60,
+    payload: dict = {},
+):
+    redis_conn.hset(redis_hash, redis_hash_key, json.dumps(payload))
+    redis_conn.expire(redis_hash, cache_life_seconds)
+    return redis_conn.exists(redis_hash)
+
+
+def get_movies_with_people(redis_conn=conn) -> dict:
     """
     Get all the movies with the characters associated with it.
     It returns the result as a dictionnary of characters indexed by film name
     if the API returns a valid result. Otherwise it returns an empty dict.
     """
+
+    cached_data = get_cached_movies_with_people(redis_conn)
+    if cached_data:
+        return cached_data
+
     movies = {}
     movies_by_id = get_movies_with_id()
 
@@ -42,4 +74,6 @@ def get_movies_with_people() -> dict:
                             movies[movie_name].append(person['name'])
                         else:
                             movies[movie_name] = [person['name']]
+
+    set_cache_movies_with_people(redis_conn, payload=movies)
     return movies

@@ -80,6 +80,9 @@ people_body = json.dumps([
 ])
 
 
+def reset_cache():
+    
+
 def mock_people_api(status=200, body=None, method=httpretty.GET):
 
     if not body:
