@@ -137,7 +137,7 @@ class TestFilmsById(TestCase):
     @httpretty.activate
     def test_accurately_converts_source_api(self):
         expected_output = {
-            "2baf70d1-42bb-4437-b551-e5fed5a87abe": "Castle in the Sky",
+            "2baf70d1-42bb-4437-b551-e5fed5a87abe": "Castle in the Sky",  # noqa
             "12cfb892-aac0-4c5b-94af-521852e46d6a": "Grave of the Fireflies",
             "12cfb892-aac0-4c5b-94af-521432e45c6b": "Film without people",
         }
@@ -264,8 +264,3 @@ class TestFilmListView(TestCase):
             response,
             'senndermovies/movies_nested_list.html'
         )
-        # All elements to be displayed are in the response !
-        for movie, people_list in movies_with_people.items():
-            self.assertContains(response, movie)
-            for person in people_list:
-                self.assertContains(response, person)
