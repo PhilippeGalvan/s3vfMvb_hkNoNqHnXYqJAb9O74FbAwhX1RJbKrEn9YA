@@ -30,6 +30,17 @@ if os.environ['DEBUG'] == 'True':
 else:
     DEBUG = False
 
+# Flag for test settings which much me loaded when the app starts
+if os.environ['TESTING'] == 'True':
+    TESTING = True
+else:
+    TESTING = False
+
+# Flag for ttl in TTLCache depending if you're testing or not
+if TESTING:
+    CACHE_MOVIE_LIST_DURATION = 2
+else:
+    CACHE_MOVIE_LIST_DURATION = 60
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 

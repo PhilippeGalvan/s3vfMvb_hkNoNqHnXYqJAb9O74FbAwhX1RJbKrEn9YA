@@ -1,9 +1,16 @@
 from django.test import TestCase, Client
-from .processing import get_movies_with_id, get_movies_with_people
+from .processing import (
+    get_movies_with_id,
+    get_movies_with_people,
+    cache
+)
 from copy import deepcopy
 import httpretty
 import json
 from django.urls import reverse
+from senndertest.settings import CACHE_MOVIE_LIST_DURATION
+from time import sleep
+from datetime import datetime
 
 
 films_uri = 'https://ghibliapi.herokuapp.com/films'
@@ -108,6 +115,9 @@ def mock_movies_api(status=200, body=None, method=httpretty.GET):
 
 class TestFilmsById(TestCase):
 
+    def tearDown(self):
+        cache.clear()
+
     def test_returns_good_format_using_live_api(self):
         movies_with_id = get_movies_with_id()
         self.assertNotEqual(movies_with_id, {})
@@ -151,6 +161,9 @@ class TestFilmsWithPeople(TestCase):
             ],
             "Film without people": [],
         }
+
+    def tearDown(self):
+        cache.clear()
 
     def test_returns_good_format_using_live_api(self):
         mock_movies_api()
@@ -210,11 +223,34 @@ class TestFilmsWithPeople(TestCase):
         movies_with_people = get_movies_with_people()
         self.assertEqual(movies_with_people, self.default_expected_output)
 
+    def test_cache_ok(self):
+        mock_movies_api()
+        mock_people_api()
+
+        start_time = datetime.now()
+        response_to_be_cached = get_movies_with_people()
+        first_call = datetime.now()
+        get_movies_with_people()
+        second_call = datetime.now()
+        self.assertGreater(
+            (first_call - start_time),
+            (second_call - first_call) * 100
+        )
+        self.assertEqual(cache.currsize, 1)
+        self.assertIn(response_to_be_cached, list(cache.items())[0])
+        if CACHE_MOVIE_LIST_DURATION > 2:
+            self.assertFalse(True, 'Please check if TESTING is set to True')
+            sleep(CACHE_MOVIE_LIST_DURATION)
+            self.assertEqual(cache.currsize, 0)
+
 
 class TestFilmListView(TestCase):
 
     def setUp(self):
         self.client = Client()
+
+    def tearDown(self):
+        cache.clear()
 
     @httpretty.activate
     def test_response_ok(self):

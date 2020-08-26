@@ -1,4 +1,9 @@
 import requests
+from cachetools import cached
+from cachetools.func import TTLCache
+from senndertest.settings import CACHE_MOVIE_LIST_DURATION
+
+cache = TTLCache(maxsize=1, ttl=CACHE_MOVIE_LIST_DURATION)
 
 
 def get_movies_with_id() -> dict:
@@ -15,6 +20,7 @@ def get_movies_with_id() -> dict:
     return {movie['id']: movie['title'] for movie in raw_movies}
 
 
+@cached(cache=cache)
 def get_movies_with_people() -> dict:
     """
     Get all the movies with the characters associated with it.
