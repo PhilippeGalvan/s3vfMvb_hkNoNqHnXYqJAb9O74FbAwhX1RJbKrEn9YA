@@ -62,32 +62,51 @@ def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> Dict[str, li
     It returns the result as a dictionnary of characters indexed by film name
     if the API returns a valid result. Otherwise it returns an empty dict.
     """
+    cache_movie_lock = redis.lock.Lock(
+        conn,
+        'get_movie_lock',
+        blocking_timeout=3
+    )
 
+    # Lock is not placed here to avoid unnecessary overhead
+    # It isn't DRY, can be challenged !
+    # We could remove this part and start at the lock
+    # if we consider the operation as cheap
     cached_data = get_cached_movies_with_people(redis_conn)
     if cached_data:
         return cached_data
 
-    movies = {}
-    movies_by_id = get_movies_with_id()
+    # Start lock here because the lock is taken
+    # only when cached_data is being retrieved from the distant API
+    # See: https://en.wikipedia.org/wiki/Thundering_herd_problem
+    with cache_movie_lock:
+        # If the thread was locked then it needs to check if another client
+        # successfully cached information otherwise it tries to retrieve it
+        cached_data = get_cached_movies_with_people(redis_conn)
+        if cached_data:
+            return cached_data
+        movies = {}
+        movies_by_id = get_movies_with_id()
 
-    if movies_by_id:
-        response = requests.get(
-            'https://ghibliapi.herokuapp.com/people'
-        )
-        people_w_movie = response.json()
-        if response.status_code == 200:
-            movies = {name: [] for id, name in movies_by_id.items()}
-            for person in people_w_movie:
-                # Sometime the API send back a wrong id without contextual
-                # information and impossible to reach by id with the people API
-                if all(key in person for key in ("films", "name")):
-                    for movie in person['films']:
-                        movie_id = movie.split('/')[-1]
-                        movie_name = movies_by_id[movie_id]
-                        if movie_name in movies:
-                            movies[movie_name].append(person['name'])
-                        else:
-                            movies[movie_name] = [person['name']]
+        if movies_by_id:
+            response = requests.get(
+                'https://ghibliapi.herokuapp.com/people'
+            )
+            people_w_movie = response.json()
+            if response.status_code == 200:
+                movies = {name: [] for id, name in movies_by_id.items()}
+                for person in people_w_movie:
+                    # Sometime the API send back a wrong id without contextual  # noqa
+                    # information and impossible to reach by id with the people API  # noqa
+                    if all(key in person for key in ("films", "name")):
+                        for movie in person['films']:
+                            movie_id = movie.split('/')[-1]
+                            movie_name = movies_by_id[movie_id]
+                            if movie_name in movies:
+                                movies[movie_name].append(person['name'])
+                            else:
+                                movies[movie_name] = [person['name']]
 
-    set_cache_movies_with_people(payload=movies, redis_conn=redis_conn)
+        set_cache_movies_with_people(payload=movies, redis_conn=redis_conn)
+        # End lock
     return movies
