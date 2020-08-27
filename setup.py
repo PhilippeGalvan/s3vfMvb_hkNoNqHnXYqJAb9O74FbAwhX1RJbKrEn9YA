@@ -11,4 +11,11 @@ setup(
         'redis',
         'requests',
     ],
+    extras_require={
+        "dev":  [
+            'httpretty',
+            'coverage',
+            'flake8',
+        ],
+    }
 )

@@ -6,13 +6,9 @@ from datetime import datetime
 
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.conf import settings
 
 from .processing import get_movies_with_id, get_movies_with_people
-from senndertest.settings import (
-    REDIS_HOST,
-    REDIS_HASH_CACHE,
-    REDIS_HASH_CACHE_KEY,
-)
 
 films_uri = 'https://ghibliapi.herokuapp.com/films'
 people_uri = 'https://ghibliapi.herokuapp.com/people'
@@ -53,8 +49,7 @@ people_body = json.dumps([
         "age": "late teens",
         "eye_color": "brown",
         "hair_color": "brown",
-        "films":
-        [
+        "films": [
             "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
             "https://ghibliapi.herokuapp.com/films/12cfb892-aac0-4c5b-94af-521852e46d6a",  # noqa
         ],
@@ -88,12 +83,15 @@ people_body = json.dumps([
 ])
 
 
-conn = StrictRedis(REDIS_HOST)
+conn = StrictRedis(settings.REDIS_HOST)
 
 
 def reset_cache(redis_conn: StrictRedis = conn):
-    if redis_conn.exists(REDIS_HASH_CACHE):
-        redis_conn.hdel(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY)
+    if redis_conn.exists(settings.REDIS_HASH_CACHE):
+        redis_conn.hdel(
+            settings.REDIS_HASH_CACHE,
+            settings.REDIS_HASH_CACHE_KEY
+        )
 
 
 def mock_people_api(status=200, body=None, method=httpretty.GET):
@@ -217,12 +215,15 @@ class TestFilmsWithPeople(TestCase):
         mock_movies_api()
         mock_people_api()
 
-        self.assertEqual(conn.exists(REDIS_HASH_CACHE), 0)
+        self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 0)
         movies_with_people = get_movies_with_people()
-        self.assertEqual(conn.exists(REDIS_HASH_CACHE), 1)
+        self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 1)
         self.assertEqual(
             movies_with_people,
-            json.loads(conn.hget(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY).decode('utf-8'))  # noqa
+            json.loads(conn.hget(
+                settings.REDIS_HASH_CACHE,
+                settings.REDIS_HASH_CACHE_KEY
+            ).decode('utf-8'))  # noqa
         )
 
     @httpretty.activate

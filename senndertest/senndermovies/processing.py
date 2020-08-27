@@ -1,14 +1,10 @@
 import redis
 import requests
 import json
-from senndertest.settings import (
-    REDIS_HOST,
-    REDIS_HASH_CACHE,
-    REDIS_HASH_CACHE_KEY,
-)
+from django.conf import settings
 
 
-conn = redis.StrictRedis(REDIS_HOST)
+conn = redis.StrictRedis(settings.REDIS_HOST)
 
 
 def get_movies_with_id() -> dict:
@@ -27,29 +23,35 @@ def get_movies_with_id() -> dict:
 def get_cached_movies_with_people(
     redis_conn: redis.StrictRedis = conn,
 ) -> dict:
-    if redis_conn.exists(REDIS_HASH_CACHE):
-        return json.loads(
-            conn.hget(REDIS_HASH_CACHE, REDIS_HASH_CACHE_KEY).decode('utf-8')
-        )
-    else:
-        return {}
+    """
+    Get the dict of movies with people if it exists in the cache
+    else returns an empty dict {}.
+    """  # noqa
+    cache = conn.hget(
+        settings.REDIS_HASH_CACHE,
+        settings.REDIS_HASH_CACHE_KEY
+    )
+    return json.loads(cache.decode('utf-8')) if cache else {}
 
 
 def set_cache_movies_with_people(
+    payload: dict,
     redis_conn: redis.StrictRedis = conn,
-    cache_life_seconds: int = 60,
-    payload: dict = {},
 ) -> bool:
+    """
+    Set the dict of movies with people even if it already exists in the cache
+    and returns True if the cache exists, False otherwise.
+    """
     redis_conn.hset(
-        REDIS_HASH_CACHE,
-        REDIS_HASH_CACHE_KEY,
+        settings.REDIS_HASH_CACHE,
+        settings.REDIS_HASH_CACHE_KEY,
         json.dumps(payload)
     )
     redis_conn.expire(
-        REDIS_HASH_CACHE,
-        cache_life_seconds
+        settings.REDIS_HASH_CACHE,
+        settings.CACHE_LIFE_SECONDS,
     )
-    return True if redis_conn.exists(REDIS_HASH_CACHE) else False
+    return bool(redis_conn.exists(settings.REDIS_HASH_CACHE))
 
 
 def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> dict:
@@ -85,5 +87,5 @@ def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> dict:
                         else:
                             movies[movie_name] = [person['name']]
 
-    set_cache_movies_with_people(redis_conn, payload=movies)
+    set_cache_movies_with_people(payload=movies, redis_conn=redis_conn)
     return movies
