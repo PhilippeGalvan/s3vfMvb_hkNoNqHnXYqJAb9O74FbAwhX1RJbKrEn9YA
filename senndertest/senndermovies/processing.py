@@ -76,7 +76,7 @@ def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> Dict[str, li
     if cached_data:
         return cached_data
 
-    # Start lock here because the lock is taken
+    # Start lock here because the lock has to be taken
     # only when cached_data is being retrieved from the distant API
     # See: https://en.wikipedia.org/wiki/Thundering_herd_problem
     with cache_movie_lock:
