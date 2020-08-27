@@ -150,11 +150,15 @@ class TestFilmsWithPeople(TestCase):
             mock_people_api()
             cached_result = get_movies_with_people()
 
+            # Wait for the cache to expire
             sleep(settings.CACHE_LIFE_SECONDS)
             not_cached_result_after_expire = get_movies_with_people()
 
             # Before cache expiration
-            self.assertEqual(not_cached_result, cached_result)
+            self.assertEqual(
+                not_cached_result,
+                cached_result
+            )
 
             # After cache expiration
             self.assertNotEqual(

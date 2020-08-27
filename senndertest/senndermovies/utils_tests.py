@@ -139,7 +139,6 @@ def set_movie_cache_basic(payload):
 
 
 def mock_people_api(status=200, body=None, method=httpretty.GET):
-
     if not body:
         body = people_body if status == 200 else '{"message": "HTTPretty :)"}'
 
@@ -149,12 +148,10 @@ def mock_people_api(status=200, body=None, method=httpretty.GET):
         body=body,
         status=status,
     )
-
     return body
 
 
 def mock_movies_api(status=200, body=None, method=httpretty.GET):
-
     if not body:
         body = film_body if status == 200 else '{"message": "HTTPretty :)"}'
 
@@ -164,5 +161,4 @@ def mock_movies_api(status=200, body=None, method=httpretty.GET):
         body=body,
         status=status,
     )
-
     return body
