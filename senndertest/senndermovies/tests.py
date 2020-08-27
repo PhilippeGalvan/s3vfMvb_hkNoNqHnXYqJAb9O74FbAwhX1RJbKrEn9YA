@@ -2,7 +2,6 @@ import json
 import httpretty
 from redis import StrictRedis
 from copy import deepcopy
-from datetime import datetime
 from time import sleep
 
 from django.test import TestCase, Client
@@ -21,6 +20,7 @@ from .utils_tests import (
     mock_movies_api,
     mock_people_api,
     people_body,
+    new_valid_person,
     get_movie_cache_basic,
     set_movie_cache_basic,
     conn,
@@ -136,20 +136,36 @@ class TestFilmsWithPeople(TestCase):
 
     @httpretty.activate
     def test_cache_read(self):
-        # I don't see how to check that I'm returning a cached version except
-        # with logging or timing (which is more an hint than a proof)
         mock_movies_api()
-        mock_people_api()
+        changed_people_body = deepcopy(json.loads(people_body))
+        changed_people_body.append(new_valid_person)
+        mock_people_api(body=json.dumps(changed_people_body))
 
-        start_time = datetime.now()
-        get_movies_with_people()
-        first_call = datetime.now()
-        get_movies_with_people()
-        second_call = datetime.now()
-        self.assertGreater(
-            first_call - start_time,
-            5*(second_call - first_call)
-        )
+        test_cache_ttl = 1
+        with self.settings(CACHE_LIFE_SECONDS=test_cache_ttl):
+            not_cached_result = get_movies_with_people()
+
+            # Modify results returned by Ghibli API. If the cache is used,
+            # this change will only be seen after the expiration of the cache
+            mock_people_api()
+            cached_result = get_movies_with_people()
+
+            sleep(settings.CACHE_LIFE_SECONDS)
+            not_cached_result_after_expire = get_movies_with_people()
+
+            # Before cache expiration
+            self.assertEqual(not_cached_result, cached_result)
+
+            # After cache expiration
+            self.assertNotEqual(
+                not_cached_result,
+                not_cached_result_after_expire
+            )
+
+    def test_cache_concurrency(self):
+        # TODO: implement a test that would simulate concurrent calls and
+        # check if the second call waits for the first call to update the cache
+        pass
 
 
 class TestSetMovieCache(TestCase):

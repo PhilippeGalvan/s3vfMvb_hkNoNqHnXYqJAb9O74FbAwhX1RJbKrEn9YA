@@ -79,6 +79,20 @@ people_body = json.dumps([
     }
 ])
 
+new_valid_person = {
+    "id": "ba924631-068e-4436-b6de-f3283fa848f1",
+    "name": "new_valid_person",
+    "gender": "male",
+    "age": "late teens",
+    "eye_color": "brown",
+    "hair_color": "brown",
+    "films": [
+        "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
+    ],
+    "species": "https://ghibliapi.herokuapp.com/species/af3910a6-429f-4c74-9ad5-dfe1c4aa04f2",  # noqa
+    "url": "https://ghibliapi.herokuapp.com/people/ba924631-068e-4436-b6de-f3283fa848f1",  # noqa
+}
+
 cache_payloads_ok = [
     {
         'some_movie_to_cache': [
@@ -132,9 +146,11 @@ def mock_people_api(status=200, body=None, method=httpretty.GET):
     httpretty.register_uri(
         method,
         people_uri,
-        body=people_body,
+        body=body,
         status=status,
     )
+
+    return body
 
 
 def mock_movies_api(status=200, body=None, method=httpretty.GET):
@@ -145,6 +161,8 @@ def mock_movies_api(status=200, body=None, method=httpretty.GET):
     httpretty.register_uri(
         method,
         films_uri,
-        body=film_body,
+        body=body,
         status=status,
     )
+
+    return body
