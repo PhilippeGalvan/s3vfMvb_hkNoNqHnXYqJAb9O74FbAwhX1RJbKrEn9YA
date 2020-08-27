@@ -1,5 +1,13 @@
 # SennderTest
 
+## Introduction
+
+This goal of this app is to display to visitors the list of the movies produced by Studio Ghibli based on
+[The unofficial Ghibli API](https://ghibliapi.herokuapp.com).  
+To avoid unnecessary calls to that API, this app
+implements a server side cache with the promise of data being by default at most 1 minute older (can be changed in `.env`) than data available in the source.
+
+
 ## Local Installation
 
 - This app requires a *redis server* for caching than can be set with a docker image !
