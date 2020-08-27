@@ -1,13 +1,15 @@
 import redis
 import requests
 import json
+from typing import Dict
+
 from django.conf import settings
 
 
 conn = redis.StrictRedis(settings.REDIS_HOST)
 
 
-def get_movies_with_id() -> dict:
+def get_movies_with_id() -> Dict[str, str]:
     """
     Get all the movies from the ghibli API.
     It returns a dictionnary containing all films name indexed by id
@@ -22,7 +24,7 @@ def get_movies_with_id() -> dict:
 
 def get_cached_movies_with_people(
     redis_conn: redis.StrictRedis = conn,
-) -> dict:
+) -> Dict[str, list]:
     """
     Get the dict of movies with people if it exists in the cache
     else returns an empty dict {}.
@@ -35,14 +37,14 @@ def get_cached_movies_with_people(
 
 
 def set_cache_movies_with_people(
-    payload: dict,
+    payload: Dict[str, list],
     redis_conn: redis.StrictRedis = conn,
 ) -> bool:
     """
     Set the dict of movies with people even if it already exists in the cache
     and returns True if the cache exists, False otherwise.
     """
-    redis_conn.hset(
+    nb_keys_set = redis_conn.hset(
         settings.REDIS_HASH_CACHE,
         settings.REDIS_HASH_CACHE_KEY,
         json.dumps(payload)
@@ -51,10 +53,10 @@ def set_cache_movies_with_people(
         settings.REDIS_HASH_CACHE,
         settings.CACHE_LIFE_SECONDS,
     )
-    return bool(redis_conn.exists(settings.REDIS_HASH_CACHE))
+    return bool(nb_keys_set)
 
 
-def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> dict:
+def get_movies_with_people(redis_conn: redis.StrictRedis = conn) -> Dict[str, list]:  # noqa
     """
     Get all the movies with the characters associated with it.
     It returns the result as a dictionnary of characters indexed by film name

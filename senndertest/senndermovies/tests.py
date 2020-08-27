@@ -3,121 +3,29 @@ import httpretty
 from redis import StrictRedis
 from copy import deepcopy
 from datetime import datetime
+from time import sleep
 
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.conf import settings
 
-from .processing import get_movies_with_id, get_movies_with_people
+from .processing import (
+    get_movies_with_id,
+    get_movies_with_people,
+    get_cached_movies_with_people,
+    set_cache_movies_with_people,
+)
 
-films_uri = 'https://ghibliapi.herokuapp.com/films'
-people_uri = 'https://ghibliapi.herokuapp.com/people'
-film_body = json.dumps([
-    {
-        "id": "2baf70d1-42bb-4437-b551-e5fed5a87abe",
-        "title": "Castle in the Sky",
-        "description": "Description",
-        "director": "Hayao Miyazaki",
-        "producer": "Isao Takahata",
-        "release_date": "1986",
-        "rt_score": "95",
-    },
-    {
-        "id": "12cfb892-aac0-4c5b-94af-521852e46d6a",
-        "title": "Grave of the Fireflies",
-        "description": "Description",
-        "director": "Isao Takahata",
-        "producer": "Toru Hara",
-        "release_date": "1988",
-        "rt_score": "97",
-    },
-    {
-        "id": "12cfb892-aac0-4c5b-94af-521432e45c6b",
-        "title": "Film without people",
-        "description": "Description",
-        "director": "John Doe",
-        "producer": "Toru Hara",
-        "release_date": "2020",
-        "rt_score": "100",
-    }
-])
-people_body = json.dumps([
-    {
-        "id": "ba924631-068e-4436-b6de-f3283fa848f0",
-        "name": "Ashitaka",
-        "gender": "male",
-        "age": "late teens",
-        "eye_color": "brown",
-        "hair_color": "brown",
-        "films": [
-            "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
-            "https://ghibliapi.herokuapp.com/films/12cfb892-aac0-4c5b-94af-521852e46d6a",  # noqa
-        ],
-        "species": "https://ghibliapi.herokuapp.com/species/af3910a6-429f-4c74-9ad5-dfe1c4aa04f2",  # noqa
-        "url": "https://ghibliapi.herokuapp.com/people/ba924631-068e-4436-b6de-f3283fa848f0",  # noqa
-    },
-    {
-        "id": "598f7048-74ff-41e0-92ef-87dc1ad980a9",
-        "name": "Lusheeta Toel Ul Laputa",
-        "gender": "Female",
-        "age": "13",
-        "eye_color": "Black",
-        "hair_color": "Black",
-        "films": [
-        "https://ghibliapi.herokuapp.com/films/2baf70d1-42bb-4437-b551-e5fed5a87abe",  # noqa
-        ],
-        "species": "https://ghibliapi.herokuapp.com/species/af3910a6-429f-4c74-9ad5-dfe1c4aa04f2",  # noqa
-        "url": "https://ghibliapi.herokuapp.com/people/598f7048-74ff-41e0-92ef-87dc1ad980a9"  # noqa
-    },
-    {
-        "id": "030555b3-4c92-4fce-93fb-e70c3ae3df8b",
-        "name": "Yakul",
-        "age": "Unknown",
-        "gender": "male",
-        "eye_color": "Grey",
-        "hair_color": "Brown",
-        "films": [],
-        "species": "https://ghibliapi.herokuapp.com/species/6bc92fdd-b0f4-4286-ad71-1f99fb4a0d1e",  # noqa
-        "url": "https://ghibliapi.herokuapp.com/people/030555b3-4c92-4fce-93fb-e70c3ae3df8b"  # noqa
-    }
-])
-
-
-conn = StrictRedis(settings.REDIS_HOST)
-
-
-def reset_cache(redis_conn: StrictRedis = conn):
-    if redis_conn.exists(settings.REDIS_HASH_CACHE):
-        redis_conn.hdel(
-            settings.REDIS_HASH_CACHE,
-            settings.REDIS_HASH_CACHE_KEY
-        )
-
-
-def mock_people_api(status=200, body=None, method=httpretty.GET):
-
-    if not body:
-        body = people_body if status == 200 else '{"message": "HTTPretty :)"}'
-
-    httpretty.register_uri(
-        method,
-        people_uri,
-        body=people_body,
-        status=status,
-    )
-
-
-def mock_movies_api(status=200, body=None, method=httpretty.GET):
-
-    if not body:
-        body = film_body if status == 200 else '{"message": "HTTPretty :)"}'
-
-    httpretty.register_uri(
-        method,
-        films_uri,
-        body=film_body,
-        status=status,
-    )
+from .utils_tests import (
+    reset_cache,
+    mock_movies_api,
+    mock_people_api,
+    people_body,
+    get_movie_cache_basic,
+    set_movie_cache_basic,
+    conn,
+    cache_payloads_ok,
+)
 
 
 class TestFilmsById(TestCase):
@@ -242,6 +150,78 @@ class TestFilmsWithPeople(TestCase):
             first_call - start_time,
             5*(second_call - first_call)
         )
+
+
+class TestSetMovieCache(TestCase):
+
+    def setUp(self):
+        self.conn = StrictRedis(settings.REDIS_HOST)
+
+    def tearDown(self):
+        reset_cache()
+
+    def test_set_cache_full_and_empty_ok(self):
+        i = 0
+        for payload in cache_payloads_ok:
+            self.assertEqual(
+                conn.exists(settings.REDIS_HASH_CACHE),
+                bool(i) * 1
+            )
+            set_cache_movies_with_people(payload, self.conn)
+            self.assertEqual(
+                conn.exists(settings.REDIS_HASH_CACHE),
+                1
+            )
+            self.assertEqual(payload, get_movie_cache_basic())
+            i += 1
+
+    def test_set_cache_expire(self):
+        test_cache_ttl = 1
+        with self.settings(CACHE_LIFE_SECONDS=test_cache_ttl):
+            self.assertEqual(settings.CACHE_LIFE_SECONDS, test_cache_ttl)
+            set_cache_movies_with_people(cache_payloads_ok[0], self.conn)
+            self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 1)
+            sleep(settings.CACHE_LIFE_SECONDS)
+            self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 0)
+
+    # For a future evolution with a serializer like pickle that should fail.
+    # In the current usecase, that should never happen because we create
+    # payloads based on external json APIs only using strings and integers
+    def test_set_cache_not_serializable_payload(self):
+        from datetime import datetime
+        payload = {
+            'dict_with_datetime': [
+                datetime.now(),
+                datetime.now(),
+            ]
+        }
+        self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 0)
+        with self.assertRaises(TypeError) as e:
+            set_cache_movies_with_people(payload, self.conn)
+        self.assertIn('not JSON serializable', str(e.exception))
+        self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 0)
+
+
+class TestGetMovieCache(TestCase):
+
+    def setUp(self):
+        self.conn = StrictRedis(settings.REDIS_HOST)
+
+    def tearDown(self):
+        reset_cache()
+
+    def test_get_cache_ok(self):
+        for cache_payload in cache_payloads_ok:
+            set_movie_cache_basic(json.dumps(cache_payload))
+            self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 1)
+            cache_content = get_cached_movies_with_people()
+            self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 1)
+            self.assertEqual(cache_content, cache_payload)
+
+    def test_get_on_an_empty_cache(self):
+        self.assertEqual(conn.exists(settings.REDIS_HASH_CACHE), 0)
+        cache_content = get_cached_movies_with_people()
+        self.assertEqual(cache_content, {})
 
 
 class TestFilmListView(TestCase):
