@@ -47,7 +47,7 @@ If you want to improve the app and develop, follow the next steps
 ```bash
 python3 -m venv .venv
 source ./venv/bin/activate
-pip install -e .[dev]
+pip install -e ".[dev]"
 ```
 
 From here on follow instructions from `Common Installation`
